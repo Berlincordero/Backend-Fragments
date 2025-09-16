@@ -104,13 +104,22 @@ class PostSave(models.Model):
         return f"🔖 {self.user.username} -> post {self.post_id}"
 
 
-# ========= NUEVO: Carrusel de portada (hasta 3 imágenes) =========
+# ========= Carrusel de portada (hasta 3 imágenes) =========
 class CoverSlide(models.Model):
     user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name="finca_cover_slides")
     index        = models.PositiveSmallIntegerField()  # 0..2
     image        = models.ImageField(upload_to=user_directory_path, blank=True, null=True)
-    caption      = models.TextField(blank=True)        # párrafo común
+    caption      = models.TextField(blank=True)        # texto mostrado en portada
     bibliography = models.CharField(max_length=255, blank=True)
+
+    # Personalización del texto / efecto (persistente)
+    text_color   = models.CharField(max_length=16, blank=True, default="#ffffff")
+    text_font    = models.CharField(max_length=64, blank=True, default="sans-400")
+    text_x       = models.FloatField(blank=True, null=True)   # 0..1
+    text_y       = models.FloatField(blank=True, null=True)   # 0..1
+    text_size    = models.PositiveSmallIntegerField(blank=True, null=True)  # px
+    effect       = models.CharField(max_length=16, blank=True, default="none")
+
     updated_at   = models.DateTimeField(auto_now=True)
 
     class Meta:

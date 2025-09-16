@@ -1,6 +1,8 @@
-# modulo/finca/urls.py
+# finca/urls.py
 from django.urls import path
-from .views import MyFincaViewSet, PostViewSet, CommentViewSet, CoverSlideViewSet
+from .views import (
+    MyFincaViewSet, PostViewSet, CommentViewSet, CoverSlideViewSet
+)
 
 finca_view        = MyFincaViewSet.as_view({"get": "list", "put": "update", "post": "create"})
 post_view         = PostViewSet.as_view({"get": "list", "post": "create"})
@@ -16,9 +18,11 @@ post_repost       = PostViewSet.as_view({"post": "repost"})
 post_reposters    = PostViewSet.as_view({"get": "reposters"})
 post_save         = PostViewSet.as_view({"post": "save"})             # 🔖
 post_savers       = PostViewSet.as_view({"get": "savers"})            # 🔖
+
+# borrar comentario (autor del comentario o autor del post)
 comment_detail    = CommentViewSet.as_view({"delete": "destroy"})
 
-# NUEVO
+# slides de portada
 cover_slides      = CoverSlideViewSet.as_view({"get": "list", "post": "create"})
 
 urlpatterns = [
@@ -36,8 +40,10 @@ urlpatterns = [
     path("posts/<int:pk>/reposters/",  post_reposters,    name="finca-post-reposters"),
     path("posts/<int:pk>/save/",       post_save,         name="finca-post-save"),
     path("posts/<int:pk>/savers/",     post_savers,       name="finca-post-savers"),
+
+    # eliminar comentario
     path("comments/<int:pk>/",         comment_detail,    name="finca-comment-detail"),
 
-    # nuevo endpoint para los slides de portada
+    # slides de portada
     path("cover-slides/",              cover_slides,      name="finca-cover-slides"),
 ]

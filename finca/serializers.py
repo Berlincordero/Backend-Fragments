@@ -33,13 +33,13 @@ class ProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "username", "email", "updated_at"]
 
     def get_date_of_birth(self, obj):
-        # Si tienes otro perfil global con DOB/Género, se lee aquí:
-        dob = getattr(obj.user.profile, "date_of_birth", None)
+        dob = getattr(obj.user, "profile", None)
+        dob = getattr(dob, "date_of_birth", None)
         return dob.isoformat() if dob else None
 
     def get_gender(self, obj):
-        g = getattr(obj.user.profile, "gender", None)
-        return g or None
+        prof = getattr(obj.user, "profile", None)
+        return getattr(prof, "gender", None)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -277,13 +277,17 @@ class PostSerializer(serializers.ModelSerializer):
         return data
 
 
-# ===== NUEVO: Cover slides =====
+# ===== COVER SLIDES =====
 class CoverSlideSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
-        model = CoverSlide
-        fields = ["id", "index", "image", "caption", "bibliography", "updated_at"]
+        model  = CoverSlide
+        fields = [
+            "id", "index", "image", "caption", "bibliography",
+            "text_color", "text_font", "text_x", "text_y", "text_size", "effect",
+            "updated_at",
+        ]
         read_only_fields = ["id", "updated_at"]
 
     def to_representation(self, instance):

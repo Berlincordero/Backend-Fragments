@@ -1,4 +1,4 @@
-# modulo/finca/views.py
+# finca/views.py
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, permissions, status
@@ -12,6 +12,7 @@ from .serializers import (
 )
 
 
+# --------- Permisos básicos ---------
 class IsOwner(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         return getattr(obj, "user", None) == request.user
@@ -51,6 +52,7 @@ class MyFincaViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
+        # permitimos POST como "update" parcial del perfil del usuario
         kwargs["partial"] = True
         return super().update(request, *args, **kwargs)
 
@@ -254,7 +256,7 @@ class PostViewSet(viewsets.ModelViewSet):
         if parent_id:
             parent = get_object_or_404(Comment, pk=parent_id, post=post)
 
-        c = Comment.objects.create(post=post, user=request.user, parent=parent, text=text)
+        c = Comment.objects.create(post=post, user=request.user, text=text, parent=parent)
         ser = CommentSerializer(c, context={"request": request})
         return Response({"created": ser.data, "count": post.comments.count()}, status=201)
 
@@ -375,7 +377,7 @@ class PostViewSet(viewsets.ModelViewSet):
         return Response({"count": qs.count(), "results": results})
 
 
-# ---- CommentView (opcional: eliminar) ----
+# ---- CommentView (eliminar) ----
 class CommentViewSet(viewsets.GenericViewSet):
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
@@ -386,11 +388,19 @@ class CommentViewSet(viewsets.GenericViewSet):
         self.check_object_permissions(request, obj)
         post = obj.post
         obj.delete()
-        return Response({"count": post.comments.count()}, status=204)
+        return Response({"count": post.comments.count()}, status=status.HTTP_204_NO_CONTENT)
 
 
-# ========= NUEVO: CoverSlide (listar / guardar) =========
+# ========= CoverSlide (listar / guardar) =========
 class CoverSlideViewSet(viewsets.ViewSet):
+    """
+    GET  /api/finca/cover-slides/  → lista 0..2
+    POST /api/finca/cover-slides/  → reemplaza/actualiza por-slot
+      - slide{n} (archivo), slide{n}_clear=1
+      - slide{n}_caption, slide{n}_bibliography
+      - slide{n}_text_x, slide{n}_text_y, slide{n}_color, slide{n}_font, slide{n}_text_size, slide{n}_effect
+      - caption / bibliography a nivel global (fallback si no viene por-slot)
+    """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes     = [JSONParser, MultiPartParser, FormParser]
 
@@ -405,31 +415,60 @@ class CoverSlideViewSet(viewsets.ViewSet):
         })
 
     def create(self, request):
-        """
-        Reemplaza/actualiza hasta 3 slides del usuario.
-        - multipart con archivos opcionales: slide0, slide1, slide2
-        - para borrar un slot: slide{n}_clear=1
-        - caption / bibliography aplican a todos los slides
-        """
-        caption = (request.data.get("caption") or "").strip()
-        bibliography = (request.data.get("bibliography") or "").strip()
+        common_caption = (request.data.get("caption") or "").strip()
+        common_biblio  = (request.data.get("bibliography") or "").strip()
 
         out = []
         for idx in range(3):
             f = request.FILES.get(f"slide{idx}")
             clear = request.data.get(f"slide{idx}_clear")
+            # por-slot campos (opcionales)
+            slot_caption = (request.data.get(f"slide{idx}_caption") or "").strip()
+            slot_biblio  = (request.data.get(f"slide{idx}_bibliography") or "").strip()
+            slot_text_x  = request.data.get(f"slide{idx}_text_x")
+            slot_text_y  = request.data.get(f"slide{idx}_text_y")
+            slot_color   = request.data.get(f"slide{idx}_color")
+            slot_font    = request.data.get(f"slide{idx}_font")
+            slot_size    = request.data.get(f"slide{idx}_text_size")
+            slot_effect  = request.data.get(f"slide{idx}_effect")
+
             obj, _ = CoverSlide.objects.get_or_create(user=request.user, index=idx)
+
             if clear:
                 if obj.image:
                     obj.image.delete(save=False)
                 obj.image = None
+
             if f:
                 obj.image = f
-            if caption or bibliography:
-                obj.caption = caption
-                obj.bibliography = bibliography
+
+            # caption/bibliography por slide (con fallback global)
+            if slot_caption or common_caption:
+                obj.caption = slot_caption if slot_caption != "" else common_caption
+            if slot_biblio or common_biblio:
+                obj.bibliography = slot_biblio if slot_biblio != "" else common_biblio
+
+            # Guardado defensivo de extras (solo si existen en el modelo)
+            def _set_if_has(field, value, caster=lambda v: v):
+                if value is None:
+                    return
+                if hasattr(obj, field):
+                    try:
+                        setattr(obj, field, caster(value))
+                    except Exception:
+                        pass
+
+            # posiciones/estilos (si tu modelo los tiene)
+            _set_if_has("text_x", slot_text_x, float)
+            _set_if_has("text_y", slot_text_y, float)
+            _set_if_has("text_color", slot_color, str)
+            _set_if_has("text_font", slot_font, str)
+            _set_if_has("text_size", slot_size, float)
+            _set_if_has("effect", slot_effect, str)
+
             obj.save()
             out.append(obj)
 
         ser = CoverSlideSerializer(out, many=True, context={"request": request})
-        return Response({"results": ser.data, "caption": caption, "bibliography": bibliography})
+        # devolvemos también eco del caption/biblio global por conveniencia
+        return Response({"results": ser.data, "caption": common_caption, "bibliography": common_biblio})
