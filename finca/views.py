@@ -114,8 +114,39 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer.save(author=self.request.user)
 
     def partial_update(self, request, *args, **kwargs):
+        """
+        Edición parcial (PATCH) con soporte para limpiar media:
+        - image_clear=1|true  → borra imagen existente
+        - video_clear=1|true  → borra video existente
+        Si además llega un nuevo archivo, DRF lo asignará normalmente.
+        """
+        instance = self.get_object()
+        self.check_object_permissions(request, instance)
+
+        # flags de limpieza
+        def _to_bool(val):
+            return str(val or "").strip().lower() in ("1", "true", "yes")
+
+        img_clear = _to_bool(request.data.get("image_clear"))
+        vid_clear = _to_bool(request.data.get("video_clear"))
+
+        # aplica clear antes del update DRF para evitar que persista el viejo archivo
+        if img_clear and instance.image:
+            instance.image.delete(save=False)
+            instance.image = None
+        if vid_clear and instance.video:
+            instance.video.delete(save=False)
+            instance.video = None
+
+        # update parcial normal (acepta archivos nuevos si vienen en multipart)
         kwargs["partial"] = True
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+
+        # aseguramos persistencia de los clears si no vino archivo nuevo
+        if (img_clear or vid_clear) and response.status_code in (200, 202):
+            instance.save()
+
+        return response
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
